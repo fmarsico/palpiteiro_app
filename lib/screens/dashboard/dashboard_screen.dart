@@ -6,16 +6,20 @@ import '../../models/pool_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/pool_service.dart';
 import '../auth/login_screen.dart';
+import 'package:palpiteiro_app/screens/profile/profile_screen.dart';
+import 'package:palpiteiro_app/screens/pool/pool_internal_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userId;
   final String userName;
+  final String userEmail;
   final String token;
 
   const DashboardScreen({
     super.key,
     required this.userId,
     required this.userName,
+    required this.userEmail,
     required this.token,
   });
 
@@ -31,10 +35,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Pool> _ownedPools = [];
   bool _loading = true;
   String? _error;
+  late String _currentUserName;
+  late String _currentUserEmail;
+  late String _currentToken;
 
   @override
   void initState() {
     super.initState();
+    _currentUserName = widget.userName;
+    _currentUserEmail = widget.userEmail;
+    _currentToken = widget.token;
     _loadPools();
   }
 
@@ -46,7 +56,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final owned = await _poolService.getOwnedPools(
         userId: widget.userId,
-        token: widget.token,
+        token: _currentToken,
       );
       setState(() => _ownedPools = owned);
     } catch (e) {
@@ -57,11 +67,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String get _initials {
-    final parts = widget.userName.trim().split(' ');
+    final parts = _currentUserName.trim().split(' ');
     if (parts.length >= 2) {
       return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     }
-    return widget.userName.substring(0, parts.first.length >= 2 ? 2 : 1).toUpperCase();
+    return _currentUserName.substring(0, parts.first.length >= 2 ? 2 : 1).toUpperCase();
   }
 
   @override
@@ -119,9 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       onSelected: _onMenuSelected,
       itemBuilder: (_) => [
-        _popupItem('perfil', Icons.person_outline, 'Meu Perfil', AppColors.text),
-        _popupItem('editar', Icons.edit_outlined, 'Editar dados', AppColors.text),
-        const PopupMenuDivider(height: 1),
+        _popupItem('perfil', Icons.person_outline, 'Meus dados', AppColors.text),
         _popupItem('sair', Icons.logout, 'Sair', AppColors.red),
       ],
       child: Container(
@@ -162,6 +170,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _onMenuSelected(String value) async {
+    if (value == 'perfil') {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(
+            userName: _currentUserName,
+            userEmail: _currentUserEmail,
+            token: _currentToken,
+            onSaved: (result) {
+              if (!mounted) return;
+              setState(() {
+                _currentUserName = result.name;
+                _currentUserEmail = result.email;
+                _currentToken = result.token;
+              });
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     if (value == 'sair') {
       await _authService.logout();
       if (mounted) {
@@ -342,7 +372,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               // Ver bolão
               GestureDetector(
                 onTap: () {
-                  // TODO: navigate to pool detail
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => PoolInternalScreen(
+                        pool: pool,
+                        currentUserId: widget.userId,
+                        currentUserName: _currentUserName,
+                        token: _currentToken,
+                      ),
+                    ),
+                  );
                 },
                 child: Row(
                   children: [
@@ -453,7 +492,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ─── Search tab ───────────────────────────────────────────────────────────
 
   Widget _buildSearchTab() {
-    return _SearchPoolTab(userId: widget.userId, token: widget.token);
+    return _SearchPoolTab(userId: widget.userId, token: _currentToken);
   }
 
   // ─── Bottom nav ───────────────────────────────────────────────────────────
@@ -517,7 +556,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _CreatePoolSheet(
         userId: widget.userId,
-        token: widget.token,
+        token: _currentToken,
         onCreated: (pool) {
           setState(() => _ownedPools.insert(0, pool));
         },

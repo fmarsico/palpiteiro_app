@@ -62,6 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => DashboardScreen(
               userId: result.userId,
               userName: result.name,
+              userEmail: result.email,
               token: result.token,
             ),
           ),
@@ -98,6 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => DashboardScreen(
               userId: result.userId,
               userName: result.name,
+              userEmail: result.email,
               token: result.token,
             ),
           ),

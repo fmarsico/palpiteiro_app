@@ -64,7 +64,10 @@ class PoolService {
     final response = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/pool/$poolId/request-access'),
       headers: _authHeader(token),
-      body: jsonEncode({'userId': userId}),
+      body: jsonEncode({
+        'poolId': poolId,
+        'userId': userId,
+      }),
     );
     if (response.statusCode != 200 && response.statusCode != 201) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -72,4 +75,3 @@ class PoolService {
     }
   }
 }
-
