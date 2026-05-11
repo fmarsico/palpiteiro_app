@@ -32,7 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _authService = AuthService();
 
   int _currentTab = 0; // 0 = Bolões, 1 = Buscar
-  List<Pool> _ownedPools = [];
+  List<Pool> _pools = [];
   bool _loading = true;
   String? _error;
   late String _currentUserName;
@@ -58,13 +58,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
         userId: widget.userId,
         token: _currentToken,
       );
-      setState(() => _ownedPools = owned);
+      final member = await _poolService.getMemberPools(
+        userId: widget.userId,
+        token: _currentToken,
+      );
+
+      // Combina os dois, evitando duplicatas
+      final allPools = <Pool>[];
+      final poolIds = <String>{};
+
+      // Adiciona primeiro os bolões onde é dono
+      for (final pool in owned) {
+        if (!poolIds.contains(pool.id)) {
+          allPools.add(pool);
+          poolIds.add(pool.id);
+        }
+      }
+
+      // Depois adiciona os bolões onde é membro (que não são duplicatas)
+      for (final pool in member) {
+        if (!poolIds.contains(pool.id)) {
+          allPools.add(pool);
+          poolIds.add(pool.id);
+        }
+      }
+
+      setState(() => _pools = allPools);
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       setState(() => _loading = false);
     }
   }
+
+  bool _isOwner(Pool pool) => pool.ownerId == widget.userId;
 
   String get _initials {
     final parts = _currentUserName.trim().split(' ');
@@ -222,20 +249,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: CircularProgressIndicator(color: AppColors.gold),
               ),
             )
-          else if (_error != null)
-            SliverFillRemaining(child: _buildError())
-          else if (_ownedPools.isEmpty)
-            SliverFillRemaining(child: _buildEmpty())
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(13, 0, 13, 20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (_, i) => _buildPoolCard(_ownedPools[i], isOwner: true),
-                  childCount: _ownedPools.length,
-                ),
-              ),
-            ),
+           else if (_error != null)
+             SliverFillRemaining(child: _buildError())
+           else if (_pools.isEmpty)
+             SliverFillRemaining(child: _buildEmpty())
+           else
+             SliverPadding(
+               padding: const EdgeInsets.fromLTRB(13, 0, 13, 20),
+               sliver: SliverList(
+                 delegate: SliverChildBuilderDelegate(
+                   (_, i) => _buildPoolCard(_pools[i], isOwner: _isOwner(_pools[i])),
+                   childCount: _pools.length,
+                 ),
+               ),
+             ),
         ],
       ),
     );
@@ -549,20 +576,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ─── Create pool sheet ────────────────────────────────────────────────────
 
-  void _showCreatePoolSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _CreatePoolSheet(
-        userId: widget.userId,
-        token: _currentToken,
-        onCreated: (pool) {
-          setState(() => _ownedPools.insert(0, pool));
-        },
-      ),
-    );
-  }
+   void _showCreatePoolSheet() {
+     showModalBottomSheet(
+       context: context,
+       isScrollControlled: true,
+       backgroundColor: Colors.transparent,
+       builder: (_) => _CreatePoolSheet(
+         userId: widget.userId,
+         token: _currentToken,
+         onCreated: (pool) {
+           setState(() => _pools.insert(0, pool));
+         },
+       ),
+     );
+   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

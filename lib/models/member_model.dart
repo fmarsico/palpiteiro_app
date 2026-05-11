@@ -16,16 +16,61 @@ class PoolMember {
   bool get isPending => status == MemberStatus.pending;
 
   factory PoolMember.fromJson(Map<String, dynamic> json) {
-    final role = json['role'] as String? ?? '';
-    final statusStr = json['status'] as String? ?? 'approved';
+    final nestedUser = json['user'];
+    final userMap = nestedUser is Map<String, dynamic> ? nestedUser : null;
+
+    final role = _asString(
+      json['role'] ?? json['memberRole'] ?? userMap?['role'],
+    ).toLowerCase();
+
+    final statusStr = _asString(
+      json['status'] ?? json['requestStatus'] ?? json['membershipStatus'],
+      fallback: 'approved',
+    ).toLowerCase();
+
     return PoolMember(
-      userId: (json['userId'] ?? json['user_id'] ?? json['id'] ?? '') as String,
-      name: (json['name'] ?? json['userName'] ?? json['user_name'] ?? '') as String,
-      isOwner: role == 'owner' || role == 'OWNER' || json['isOwner'] == true,
-      status: statusStr == 'pending' || statusStr == 'PENDING'
+      userId: _asString(
+        json['userId'] ??
+            json['user_id'] ??
+            json['memberId'] ??
+            json['requesterId'] ??
+            json['id'] ??
+            userMap?['id'] ??
+            userMap?['userId'],
+      ),
+      name: _asString(
+        json['name'] ??
+            json['userName'] ??
+            json['user_name'] ??
+            json['fullName'] ??
+            userMap?['name'] ??
+            userMap?['userName'] ??
+            userMap?['fullName'],
+        fallback: 'Usuario',
+      ),
+      isOwner: role == 'owner' ||
+          role == 'admin' ||
+          role == 'creator' ||
+          json['isOwner'] == true,
+      status: _isPendingStatus(statusStr)
           ? MemberStatus.pending
           : MemberStatus.approved,
     );
+  }
+
+  static bool _isPendingStatus(String status) {
+    return status.contains('pend') ||
+        status.contains('request') ||
+        status.contains('aguard');
+  }
+
+  static String _asString(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    if (value is String) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? fallback : trimmed;
+    }
+    return value.toString();
   }
 }
 

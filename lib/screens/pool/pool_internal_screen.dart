@@ -31,7 +31,12 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   final _service = PoolInternalService();
   int _currentTab = 0;
 
-  bool get _isOwner => widget.pool.ownerId == widget.currentUserId;
+  bool get _isOwner {
+    if (widget.pool.ownerId == widget.currentUserId) return true;
+    return _members.any(
+      (member) => member.userId == widget.currentUserId && member.isOwner,
+    );
+  }
 
   // ─── Palpites state ─────────────────────────────────────────────────────────
   List<Match> _matches = [];
@@ -61,6 +66,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   void initState() {
     super.initState();
     _loadPalpitesData();
+    _loadMembers();
   }
 
   @override
@@ -97,6 +103,16 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
         m.myGuess = guessMap[m.id];
       }
 
+      // Recreate controllers to avoid stale values/memory leaks after refresh.
+      for (final c in _homeCtrl.values) {
+        c.dispose();
+      }
+      for (final c in _awayCtrl.values) {
+        c.dispose();
+      }
+      _homeCtrl.clear();
+      _awayCtrl.clear();
+
       // Create controllers
       for (final m in matches) {
         _homeCtrl[m.id] =
@@ -105,7 +121,13 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
             TextEditingController(text: m.myGuess?.awayScore?.toString() ?? '');
       }
 
-      setState(() => _matches = matches);
+      setState(() {
+        _matches = matches;
+        // Keep selected chip valid after pull-to-refresh.
+        if (_selectedPhase != 'Todos' && !_phases.contains(_selectedPhase)) {
+          _selectedPhase = 'Todos';
+        }
+      });
     } catch (e) {
       setState(() =>
           _matchesError = e.toString().replaceFirst('Exception: ', ''));
@@ -114,8 +136,8 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     }
   }
 
-  Future<void> _loadRanking() async {
-    if (_rankingLoaded) return;
+  Future<void> _loadRanking({bool force = false}) async {
+    if (_rankingLoaded && !force) return;
     setState(() {
       _rankingLoading = true;
       _rankingError = null;
@@ -135,15 +157,31 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     }
   }
 
-  Future<void> _loadMembers() async {
-    if (_membersLoaded) return;
+  Future<void> _refreshRankingAfterMemberChange() async {
+    if (!mounted) return;
+    setState(() {
+      _rankingLoaded = false;
+      _rankingError = null;
+    });
+
+    // Keep ranking data in sync right away when ranking tab is visible.
+    if (_currentTab == 1) {
+      await _loadRanking(force: true);
+    }
+  }
+
+  Future<void> _loadMembers({bool force = false}) async {
+    if (_membersLoaded && !force) return;
     setState(() {
       _membersLoading = true;
       _membersError = null;
     });
     try {
       final data = await _service.getMembers(
-          poolId: widget.pool.id, token: widget.token);
+        poolId: widget.pool.id,
+        token: widget.token,
+        ownerId: widget.currentUserId,
+      );
       setState(() {
         _members = data.members;
         _pendingRequests = data.pending;
@@ -201,9 +239,11 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   Future<void> _approveRequest(PoolMember member) async {
     try {
       await _service.approveRequest(
-          poolId: widget.pool.id,
-          requesterId: member.userId,
-          token: widget.token);
+        poolId: widget.pool.id,
+        requesterId: member.userId,
+        token: widget.token,
+        ownerId: widget.currentUserId,
+      );
       setState(() {
         _pendingRequests.remove(member);
         _members.add(PoolMember(
@@ -213,6 +253,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
           status: MemberStatus.approved,
         ));
       });
+      await _refreshRankingAfterMemberChange();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -226,9 +267,11 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   Future<void> _rejectRequest(PoolMember member) async {
     try {
       await _service.rejectRequest(
-          poolId: widget.pool.id,
-          requesterId: member.userId,
-          token: widget.token);
+        poolId: widget.pool.id,
+        requesterId: member.userId,
+        token: widget.token,
+        ownerId: widget.currentUserId,
+      );
       setState(() => _pendingRequests.remove(member));
     } catch (e) {
       if (mounted) {
@@ -255,10 +298,13 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
 
     try {
       await _service.removeMember(
-          poolId: widget.pool.id,
-          memberId: member.userId,
-          token: widget.token);
+        poolId: widget.pool.id,
+        memberId: member.userId,
+        token: widget.token,
+        ownerId: widget.currentUserId,
+      );
       setState(() => _members.remove(member));
+      await _refreshRankingAfterMemberChange();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -274,7 +320,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   void _switchTab(int index) {
     setState(() => _currentTab = index);
     if (index == 1) _loadRanking();
-    if (index == 2) _loadMembers();
+    if (index == 2) _loadMembers(force: true);
   }
 
   // ─── Phase filters ───────────────────────────────────────────────────────────
@@ -291,6 +337,8 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     if (_selectedPhase == 'Todos') return _matches;
     return _matches.where((m) => m.phase == _selectedPhase).toList();
   }
+
+  bool get _hasEditableMatches => _matches.any((m) => !m.isLocked);
 
   // ─── Build ───────────────────────────────────────────────────────────────────
 
@@ -498,7 +546,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             itemCount: _phases.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            separatorBuilder: (_, index) => const SizedBox(width: 6),
             itemBuilder: (_, i) {
               final phase = _phases[i];
               final active = phase == _selectedPhase;
@@ -535,11 +583,42 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
             color: AppColors.gold,
             backgroundColor: AppColors.card,
             onRefresh: _loadPalpitesData,
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-              itemCount: filtered.length,
-              itemBuilder: (_, i) => _buildMatchCard(filtered[i]),
-            ),
+            child: filtered.isEmpty
+                ? ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 32, 12, 8),
+                    children: [
+                      Center(
+                        child: Column(
+                          children: [
+                            const Icon(Icons.filter_alt_off,
+                                size: 36, color: AppColors.textDim),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Nenhuma partida nesta fase',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Escolha outro filtro para ver os jogos.',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                color: AppColors.textDim,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) => _buildMatchCard(filtered[i]),
+                  ),
           ),
         ),
         // Save feedback
@@ -600,12 +679,14 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
           child: Column(
             children: [
               GestureDetector(
-                onTap: _savingGuesses ? null : _saveGuesses,
+                onTap: _savingGuesses || !_hasEditableMatches ? null : _saveGuesses,
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   decoration: BoxDecoration(
-                    color: AppColors.goldDim,
+                    color: _hasEditableMatches
+                        ? AppColors.goldDim
+                        : AppColors.border,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -623,7 +704,9 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                             size: 16, color: Colors.white),
                         const SizedBox(width: 6),
                         Text(
-                          'Salvar todos os palpites',
+                          _hasEditableMatches
+                              ? 'Salvar todos os palpites'
+                              : 'Sem jogos abertos para palpitar',
                           style: GoogleFonts.dmSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -677,16 +760,36 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppColors.surface,
+                      color: locked ? const Color(0xFF2A1A1A) : const Color(0xFF10281F),
                       borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: locked
+                            ? AppColors.red.withAlpha(120)
+                            : AppColors.green.withAlpha(120),
+                      ),
                     ),
                     child: Text(
-                      match.phase,
+                      locked ? 'Encerrado' : 'Aberto',
                       style: GoogleFonts.dmSans(
-                          fontSize: 9, color: AppColors.textDim),
+                          fontSize: 9,
+                          color: locked ? AppColors.red : AppColors.green,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  match.phase,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 9,
+                    color: AppColors.textDim,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 10),
@@ -1126,12 +1229,17 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
         padding: const EdgeInsets.all(12),
         children: [
           // Pending requests (owner only)
-          if (_isOwner && _pendingRequests.isNotEmpty) ...[
+          if (_isOwner) ...[
             _sectionLabel('Solicitações pendentes', count: _pendingRequests.length),
             const SizedBox(height: 8),
-            ..._pendingRequests
-                .map((m) => _buildPendingRow(m))
-                ,
+            if (_pendingRequests.isEmpty)
+              _buildEmptyMembersCard(
+                icon: Icons.mark_email_read_outlined,
+                title: 'Sem solicitações pendentes',
+                subtitle: 'Novos pedidos de entrada aparecerão aqui.',
+              )
+            else
+              ..._pendingRequests.map(_buildPendingRow),
             const SizedBox(height: 8),
             const Divider(color: AppColors.border, height: 1),
             const SizedBox(height: 12),
@@ -1140,16 +1248,58 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
           _sectionLabel('Membros'),
           const SizedBox(height: 8),
           if (_members.isEmpty)
-            Center(
-              child: Text(
-                'Nenhum membro ainda.',
-                style: GoogleFonts.dmSans(
-                    fontSize: 13, color: AppColors.textDim),
-              ),
+            _buildEmptyMembersCard(
+              icon: Icons.groups_outlined,
+              title: 'Nenhum membro ainda',
+              subtitle: 'Compartilhe o codigo do bolao para convidar pessoas.',
             )
           else
-            ..._members.map((m) => _buildMemberRow(m)),
+            ..._members.map(_buildMemberRow),
           const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyMembersCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.text,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 10,
+                    color: AppColors.textDim,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

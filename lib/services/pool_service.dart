@@ -24,6 +24,23 @@ class PoolService {
     throw Exception('Erro ao carregar bolões');
   }
 
+  Future<List<Pool>> getMemberPools({
+    required String userId,
+    required String token,
+  }) async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/pool/member-of/$userId'),
+      headers: _authHeader(token),
+    );
+    if (response.statusCode == 200) {
+      final list = jsonDecode(response.body) as List<dynamic>;
+      return list.map((e) => Pool.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    // 404 means no member pools yet
+    if (response.statusCode == 404) return [];
+    throw Exception('Erro ao carregar bolões');
+  }
+
   Future<Pool> createPool({
     required String name,
     required String ownerId,

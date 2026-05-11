@@ -12,10 +12,10 @@ class Guess {
   });
 
   factory Guess.fromJson(Map<String, dynamic> json) => Guess(
-        matchId: (json['matchId'] ?? json['match_id'] ?? '') as String,
-        homeScore: json['homeScore'] as int? ?? json['home_score'] as int?,
-        awayScore: json['awayScore'] as int? ?? json['away_score'] as int?,
-        points: json['points'] as int?,
+        matchId: _asString(json['matchId'] ?? json['match_id']),
+        homeScore: _asInt(json['homeScore'] ?? json['home_score']),
+        awayScore: _asInt(json['awayScore'] ?? json['away_score']),
+        points: _asInt(json['points']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -58,10 +58,9 @@ class Match {
   factory Match.fromJson(Map<String, dynamic> json) {
     DateTime date;
     try {
-      final raw = json['matchDate'] as String? ??
-          json['date'] as String? ??
-          json['match_date'] as String? ??
-          '';
+      final raw = _asString(
+        json['matchDate'] ?? json['date'] ?? json['match_date'],
+      );
       date = DateTime.parse(raw);
     } catch (_) {
       date = DateTime(2026, 6, 14);
@@ -69,30 +68,52 @@ class Match {
 
     final apiLocked = json['isLocked'] == true ||
         json['locked'] == true ||
-        json['status'] == 'locked';
+        _asString(json['status']).toLowerCase() == 'locked';
     // Also consider a match locked once it has started
     final timeLocked = date.isBefore(DateTime.now());
 
     return Match(
-      id: (json['id'] ?? json['matchId'] ?? json['match_id'] ?? '') as String,
-      homeTeam: (json['homeTeam'] ?? json['home_team'] ?? 'Time A') as String,
-      awayTeam: (json['awayTeam'] ?? json['away_team'] ?? 'Time B') as String,
-      homeFlag: (json['homeFlag'] ?? json['home_flag'] ?? '🏳') as String,
-      awayFlag: (json['awayFlag'] ?? json['away_flag'] ?? '🏳') as String,
+      id: _asString(json['id'] ?? json['matchId'] ?? json['match_id']),
+      homeTeam: _asString(
+        json['homeTeam'] ?? json['home_team'] ?? json['homeName'],
+        fallback: 'Time A',
+      ),
+      awayTeam: _asString(
+        json['awayTeam'] ?? json['away_team'] ?? json['awayName'],
+        fallback: 'Time B',
+      ),
+      homeFlag: _asString(json['homeFlag'] ?? json['home_flag'], fallback: '🏳'),
+      awayFlag: _asString(json['awayFlag'] ?? json['away_flag'], fallback: '🏳'),
       matchDate: date,
-      phase: (json['phase'] ??
-              json['round'] ??
-              json['stage'] ??
-              'Fase de Grupos') as String,
+      phase: _asString(
+        json['phase'] ?? json['round'] ?? json['stage'],
+        fallback: 'Fase de Grupos',
+      ),
       isLocked: apiLocked || timeLocked,
-      officialHomeScore: json['homeScore'] as int? ??
-          json['home_score'] as int? ??
-          json['officialHomeScore'] as int?,
-      officialAwayScore: json['awayScore'] as int? ??
-          json['away_score'] as int? ??
-          json['officialAwayScore'] as int?,
+      officialHomeScore: _asInt(
+        json['homeScore'] ?? json['home_score'] ?? json['officialHomeScore'],
+      ),
+      officialAwayScore: _asInt(
+        json['awayScore'] ?? json['away_score'] ?? json['officialAwayScore'],
+      ),
     );
   }
+}
+
+String _asString(dynamic value, {String fallback = ''}) {
+  if (value == null) return fallback;
+  if (value is String) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? fallback : trimmed;
+  }
+  return value.toString();
+}
+
+int? _asInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
 }
 
 
