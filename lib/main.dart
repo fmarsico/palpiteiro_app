@@ -4,6 +4,7 @@ import 'core/app_colors.dart';
 import 'screens/auth/login_screen.dart';
 
 void main() {
+  GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const PalpiteiroApp());
 }
 

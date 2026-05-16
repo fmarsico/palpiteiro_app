@@ -45,7 +45,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   bool _savingGuesses = false;
   String? _saveError;
   bool _saveSuccess = false;
-  String _selectedPhase = 'Todos';
+  String _selectedPhase = '';
   final Map<String, TextEditingController> _homeCtrl = {};
   final Map<String, TextEditingController> _awayCtrl = {};
 
@@ -82,59 +82,68 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
 
   // ─── Data loading ────────────────────────────────────────────────────────────
 
-  Future<void> _loadPalpitesData() async {
-    setState(() {
-      _matchesLoading = true;
-      _matchesError = null;
-    });
-    try {
-      final matches =
-          await _service.getMatches(poolId: widget.pool.id, token: widget.token);
+   Future<void> _loadPalpitesData() async {
+     setState(() {
+       _matchesLoading = true;
+       _matchesError = null;
+     });
+     try {
+       final matches =
+           await _service.getMatches(poolId: widget.pool.id, token: widget.token);
 
-      List<Guess> guesses = [];
-      try {
-        guesses = await _service.getGuesses(
-            poolId: widget.pool.id, token: widget.token);
-      } catch (_) {}
+       List<Guess> guesses = const <Guess>[];
+       try {
+         guesses = await _service.getGuesses(
+           poolId: widget.pool.id,
+           token: widget.token,
+         );
+       } catch (_) {
+         // Keep matches visible even if loading predictions fails.
+       }
 
-      // Merge guesses into matches
-      final guessMap = {for (final g in guesses) g.matchId: g};
-      for (final m in matches) {
-        m.myGuess = guessMap[m.id];
-      }
+       // Merge guesses into matches
+       final guessMap = {for (final g in guesses) g.matchId: g};
+       for (final m in matches) {
+         m.myGuess = guessMap[m.id];
+         // Points are now always calculated by the backend API (0, 1, or 4)
+       }
 
-      // Recreate controllers to avoid stale values/memory leaks after refresh.
-      for (final c in _homeCtrl.values) {
-        c.dispose();
-      }
-      for (final c in _awayCtrl.values) {
-        c.dispose();
-      }
-      _homeCtrl.clear();
-      _awayCtrl.clear();
+       // Recreate controllers to avoid stale values/memory leaks after refresh.
+       for (final c in _homeCtrl.values) {
+         c.dispose();
+       }
+       for (final c in _awayCtrl.values) {
+         c.dispose();
+       }
+       _homeCtrl.clear();
+       _awayCtrl.clear();
 
-      // Create controllers
-      for (final m in matches) {
-        _homeCtrl[m.id] =
-            TextEditingController(text: m.myGuess?.homeScore?.toString() ?? '');
-        _awayCtrl[m.id] =
-            TextEditingController(text: m.myGuess?.awayScore?.toString() ?? '');
-      }
+       // Create controllers
+       for (final m in matches) {
+         _homeCtrl[m.id] =
+             TextEditingController(text: m.myGuess?.homeScore?.toString() ?? '');
+         _awayCtrl[m.id] =
+             TextEditingController(text: m.myGuess?.awayScore?.toString() ?? '');
+       }
 
-      setState(() {
-        _matches = matches;
-        // Keep selected chip valid after pull-to-refresh.
-        if (_selectedPhase != 'Todos' && !_phases.contains(_selectedPhase)) {
-          _selectedPhase = 'Todos';
-        }
-      });
-    } catch (e) {
-      setState(() =>
-          _matchesError = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      setState(() => _matchesLoading = false);
-    }
-  }
+        setState(() {
+          _matches = matches;
+          // Set selected phase to first available phase if not yet set
+          if (_selectedPhase.isEmpty && _phases.isNotEmpty) {
+            _selectedPhase = _phases.first;
+          }
+          // Keep selected chip valid after pull-to-refresh
+          if (!_phases.contains(_selectedPhase) && _phases.isNotEmpty) {
+            _selectedPhase = _phases.first;
+          }
+        });
+     } catch (e) {
+       setState(() =>
+           _matchesError = e.toString().replaceFirst('Exception: ', ''));
+     } finally {
+       setState(() => _matchesLoading = false);
+     }
+   }
 
   Future<void> _loadRanking({bool force = false}) async {
     if (_rankingLoaded && !force) return;
@@ -145,8 +154,9 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     try {
       final data = await _service.getRanking(
           poolId: widget.pool.id, token: widget.token);
+      final ordered = [...data]..sort((a, b) => a.position.compareTo(b.position));
       setState(() {
-        _ranking = data;
+        _ranking = ordered;
         _rankingLoaded = true;
       });
     } catch (e) {
@@ -185,6 +195,22 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
       setState(() {
         _members = data.members;
         _pendingRequests = data.pending;
+
+        // Some API responses omit the owner from the membership list.
+        // Ensure the current owner is always visible in the members section.
+        if (_isOwner &&
+            _members.every((member) => member.userId != widget.currentUserId)) {
+          _members.insert(
+            0,
+            PoolMember(
+              userId: widget.currentUserId,
+              name: widget.currentUserName,
+              isOwner: true,
+              status: MemberStatus.approved,
+            ),
+          );
+        }
+
         _membersLoaded = true;
       });
     } catch (e) {
@@ -224,6 +250,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     try {
       await _service.saveGuesses(
         poolId: widget.pool.id,
+        userId: widget.currentUserId,
         guesses: guesses,
         token: widget.token,
       );
@@ -326,15 +353,28 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   // ─── Phase filters ───────────────────────────────────────────────────────────
 
   List<String> get _phases {
+    final phaseOrder = [
+      'Fase de Grupos',
+      '2ª Fase',
+      'Oitavas de Final',
+      'Quartas de Final',
+      'Semifinal',
+      'Disputa do Terceiro Lugar',
+      'Final',
+    ];
+    
     final seen = <String>{};
     for (final m in _matches) {
       seen.add(m.phase);
     }
-    return ['Todos', ...seen];
+    
+    // Sortear as fases conforme a ordem predefinida
+    final sorted = phaseOrder.where((phase) => seen.contains(phase)).toList();
+    
+    return sorted;
   }
 
   List<Match> get _filteredMatches {
-    if (_selectedPhase == 'Todos') return _matches;
     return _matches.where((m) => m.phase == _selectedPhase).toList();
   }
 
@@ -802,8 +842,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        Text(match.homeFlag,
-                            style: const TextStyle(fontSize: 24)),
+                        _buildFlagWidget(match.homeFlag),
                         const SizedBox(height: 4),
                         Text(
                           match.homeTeam,
@@ -825,13 +864,13 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                         isFilled: (_homeCtrl[match.id]?.text ?? '').isNotEmpty,
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Text(
                           '×',
                           style: GoogleFonts.dmSans(
-                              fontSize: 14,
+                              fontSize: 22,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.textDim),
+                              color: AppColors.textDim.withAlpha(180)),
                         ),
                       ),
                       _buildScoreBox(
@@ -845,8 +884,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        Text(match.awayFlag,
-                            style: const TextStyle(fontSize: 24)),
+                        _buildFlagWidget(match.awayFlag),
                         const SizedBox(height: 4),
                         Text(
                           match.awayTeam,
@@ -886,7 +924,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                         color: AppColors.green,
                       ),
                     ),
-                    if (match.myGuess?.points != null) ...[
+                    if ((match.myGuess?.points ?? 0) > 0) ...[
                       const SizedBox(width: 4),
                       Text(
                         '+${match.myGuess!.points} pts ✓',
@@ -914,23 +952,39 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     required bool isFilled,
   }) {
     final text = controller?.text ?? '';
-    final borderColor = isFilled ? AppColors.gold : AppColors.border;
-    final textColor = isFilled ? AppColors.gold : AppColors.text;
+    final hasValue = text.isNotEmpty;
+    final borderColor = hasValue
+        ? AppColors.gold
+        : (isLocked ? const Color(0xFF21476A) : const Color(0xFF1A4B7A));
+    final bgColor = hasValue
+        ? const Color(0xFF0E1F34)
+        : (isLocked ? const Color(0xFF0C1829) : const Color(0xFF0B1D31));
+    final textColor = hasValue
+        ? AppColors.gold
+        : (isLocked ? AppColors.textMuted : const Color(0xFFE8F0F6));
 
     return Container(
-      width: 38,
-      height: 38,
+      width: 50,
+      height: 50,
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: 1.4),
+        boxShadow: [
+          if (hasValue)
+            BoxShadow(
+              color: AppColors.gold.withAlpha(35),
+              blurRadius: 10,
+              spreadRadius: 0.5,
+            ),
+        ],
       ),
       child: isLocked
           ? Center(
               child: Text(
                 text.isEmpty ? '—' : text,
                 style: GoogleFonts.dmSans(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: textColor,
                 ),
@@ -944,14 +998,15 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                 maxLength: 2,
                 textAlign: TextAlign.center,
                 style: GoogleFonts.dmSans(
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: textColor,
                 ),
                 decoration: const InputDecoration(
                   counterText: '',
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
+                  contentPadding: EdgeInsets.only(bottom: 2),
                 ),
                 onChanged: (_) => setState(() {
                   _saveSuccess = false;
@@ -959,6 +1014,32 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                 }),
               ),
             ),
+    );
+  }
+
+  Widget _buildFlagWidget(String raw) {
+    final value = raw.trim();
+    final isUrl = value.startsWith('http://') || value.startsWith('https://');
+    if (!isUrl) {
+      return Text(
+        value.isEmpty ? '🏳' : value,
+        style: const TextStyle(fontSize: 24),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        value,
+        width: 24,
+        height: 24,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Icon(
+          Icons.flag_outlined,
+          size: 22,
+          color: AppColors.textDim,
+        ),
+      ),
     );
   }
 
@@ -1130,24 +1211,27 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
           ),
           SizedBox(
             width: 30,
-            child: Text('${entry.exactGuesses}',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(
-                    fontSize: 12, color: AppColors.green)),
+            child: Text(
+              '${entry.exactGuesses}',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.dmSans(
+                  fontSize: 12, color: AppColors.green)),
           ),
           SizedBox(
             width: 30,
-            child: Text('${entry.groupPoints}',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(
-                    fontSize: 12, color: AppColors.textMuted)),
+            child: Text(
+              '${entry.groupPoints}',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.dmSans(
+                  fontSize: 12, color: AppColors.textMuted)),
           ),
           SizedBox(
             width: 30,
-            child: Text('${entry.knockoutPoints}',
-                textAlign: TextAlign.center,
-                style:
-                    GoogleFonts.dmSans(fontSize: 12, color: AppColors.blue)),
+            child: Text(
+              '${entry.knockoutPoints}',
+              textAlign: TextAlign.center,
+              style:
+                  GoogleFonts.dmSans(fontSize: 12, color: AppColors.blue)),
           ),
         ],
       ),

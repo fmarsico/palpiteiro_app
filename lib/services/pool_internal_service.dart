@@ -17,44 +17,25 @@ class PoolInternalService {
     required String poolId,
     required String token,
   }) async {
-    final candidatePaths = <String>[
-      // Your current backend route for matches.
-      '/match',
-      // Backward/forward compatibility if pool-scoped route exists later.
-      '/pool/$poolId/matches',
-    ];
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/match'),
+      headers: _authHeader(token),
+    );
 
-    http.Response? lastNon404;
-
-    for (final path in candidatePaths) {
-      final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}$path'),
-        headers: _authHeader(token),
-      );
-
-      if (response.statusCode == 200) {
-        final body = jsonDecode(response.body);
-        final list = _extractListPayload(body, preferredKeys: const ['matches']);
-        return list
-            .whereType<Map<String, dynamic>>()
-            .map(Match.fromJson)
-            .toList();
-      }
-
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        _throwFromBody(response.body, 'Sessao expirada. Faca login novamente.');
-      }
-
-      if (response.statusCode != 404) {
-        lastNon404 = response;
-        break;
-      }
+    if (response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      final list = _extractListPayload(body, preferredKeys: const ['matches']);
+      return list
+          .whereType<Map<String, dynamic>>()
+          .map(Match.fromJson)
+          .toList();
     }
 
-    if (lastNon404 != null) {
-      _throwFromBody(lastNon404.body, 'Erro ao carregar partidas');
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      _throwFromBody(response.body, 'Sessao expirada. Faca login novamente.');
     }
-    return const <Match>[];
+
+    _throwFromBody(response.body, 'Erro ao carregar partidas');
   }
 
   // ─── Guesses ────────────────────────────────────────────────────────────────
@@ -64,39 +45,73 @@ class PoolInternalService {
     required String token,
   }) async {
     final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/pool/$poolId/guesses'),
+      Uri.parse('${ApiConfig.baseUrl}/pool/$poolId/predictions/me'),
       headers: _authHeader(token),
     );
+
     if (response.statusCode == 200) {
-      final body = jsonDecode(response.body);
-      final list = _extractListPayload(body, preferredKeys: const ['guesses']);
+      final body = response.body.trim().isEmpty ? const <dynamic>[] : jsonDecode(response.body);
+      final list = _extractListPayload(body, preferredKeys: const ['predictions']);
       return list
           .whereType<Map<String, dynamic>>()
           .map(Guess.fromJson)
           .toList();
     }
-    // 404 means no guesses yet — return empty
-    if (response.statusCode == 404) return [];
+
+    if (response.statusCode == 404) return const <Guess>[];
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      _throwFromBody(response.body, 'Sessao expirada. Faca login novamente.');
+    }
+
     _throwFromBody(response.body, 'Erro ao carregar palpites');
   }
 
-  Future<void> saveGuesses({
+  Future<List<Guess>> saveGuesses({
     required String poolId,
+    required String userId,
     required List<Guess> guesses,
     required String token,
   }) async {
-    final body =
-        jsonEncode(guesses.map((g) => g.toJson()).toList());
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/pool/$poolId/guesses'),
-      headers: _authHeader(token),
-      body: body,
-    );
-    if (response.statusCode != 200 &&
-        response.statusCode != 201 &&
-        response.statusCode != 204) {
+    final payload = jsonEncode({
+      'userId': userId,
+      'poolId': poolId,
+      'predictions': guesses.map((g) => g.toJson()).toList(),
+    });
+
+    Future<http.Response> send(bool update) {
+      return update
+          ? http.put(
+              Uri.parse('${ApiConfig.baseUrl}/prediction'),
+              headers: _authHeader(token),
+              body: payload,
+            )
+          : http.post(
+              Uri.parse('${ApiConfig.baseUrl}/prediction'),
+              headers: _authHeader(token),
+              body: payload,
+            );
+    }
+
+    var response = await send(false);
+    if (response.statusCode == 400) {
+      final message = _responseMessage(response.body).toLowerCase();
+      if (message.contains('already exists') ||
+          message.contains('ja existe') ||
+          message.contains('já existe')) {
+        response = await send(true);
+      }
+    }
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
       _throwFromBody(response.body, 'Erro ao salvar palpites');
     }
+
+    final body = response.body.trim().isEmpty ? const <dynamic>[] : jsonDecode(response.body);
+    final list = _extractListPayload(body, preferredKeys: const ['predictions']);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(Guess.fromJson)
+        .toList();
   }
 
   // ─── Ranking ─────────────────────────────────────────────────────────────────
@@ -129,6 +144,26 @@ class PoolInternalService {
   }) async {
     final members = <PoolMember>[];
     final pending = <PoolMember>[];
+
+    // If we are the owner, the memberships endpoint returns owner + all statuses.
+    if (ownerId != null && ownerId.isNotEmpty) {
+      final membershipsPayload = await _getOptional(
+        path: '/pool/$poolId/memberships?ownerId=$ownerId',
+        token: token,
+      );
+      if (membershipsPayload != null) {
+        final parsed = _parseMembershipsPayload(
+          membershipsPayload,
+          ownerId: ownerId,
+        );
+        if (parsed.members.isNotEmpty || parsed.pending.isNotEmpty) {
+          return (
+            members: _uniqueMembersById(parsed.members),
+            pending: _uniqueMembersById(parsed.pending),
+          );
+        }
+      }
+    }
 
     // First, fetch approved members (always from /pool/{poolId}/members)
     final membersPayload = await _getOptional(
@@ -171,6 +206,37 @@ class PoolInternalService {
       members: _uniqueMembersById(members.where((m) => !m.isPending).toList()),
       pending: _uniqueMembersById(pending.where((m) => m.isPending).toList()),
     );
+  }
+
+  ({List<PoolMember> members, List<PoolMember> pending}) _parseMembershipsPayload(
+    dynamic payload, {
+    required String ownerId,
+  }) {
+    final members = <PoolMember>[];
+    final pending = <PoolMember>[];
+
+    final rows = _extractListPayload(
+      payload,
+      preferredKeys: const ['memberships'],
+    );
+
+    for (final item in rows.whereType<Map<String, dynamic>>()) {
+      final member = PoolMember.fromJson(item);
+      final normalized = PoolMember(
+        userId: member.userId,
+        name: member.name,
+        isOwner: member.userId == ownerId || member.isOwner,
+        status: member.status,
+      );
+
+      if (normalized.isPending) {
+        pending.add(normalized);
+      } else {
+        members.add(normalized);
+      }
+    }
+
+    return (members: members, pending: pending);
   }
 
   Future<void> approveRequest({
@@ -444,6 +510,17 @@ class PoolInternalService {
       }
     } catch (_) {}
     throw Exception(message ?? fallback);
+  }
+
+  String _responseMessage(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map<String, dynamic>) {
+        final msg = data['message'];
+        if (msg is String && msg.trim().isNotEmpty) return msg;
+      }
+    } catch (_) {}
+    return body;
   }
 }
 

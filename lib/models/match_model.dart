@@ -18,6 +18,22 @@ class Guess {
         points: _asInt(json['points']),
       );
 
+  /// Calculate points if the guess matches the official result exactly
+  /// Returns 10 points for exact match, 0 otherwise or if no official result
+  int calculatePoints({
+    required int? officialHomeScore,
+    required int? officialAwayScore,
+  }) {
+    if (officialHomeScore == null || officialAwayScore == null) return 0;
+    if (homeScore == null || awayScore == null) return 0;
+    
+    // Exact match: award 10 points
+    if (homeScore == officialHomeScore && awayScore == officialAwayScore) {
+      return 10;
+    }
+    return 0;
+  }
+
   Map<String, dynamic> toJson() => {
         'matchId': matchId,
         'homeScore': homeScore,
@@ -72,31 +88,71 @@ class Match {
     // Also consider a match locked once it has started
     final timeLocked = date.isBefore(DateTime.now());
 
+    final homeTeamMap = json['homeTeam'] is Map<String, dynamic>
+        ? json['homeTeam'] as Map<String, dynamic>
+        : null;
+    final awayTeamMap = json['awayTeam'] is Map<String, dynamic>
+        ? json['awayTeam'] as Map<String, dynamic>
+        : null;
+    final resultMap = json['result'] is Map<String, dynamic>
+        ? json['result'] as Map<String, dynamic>
+        : null;
+
     return Match(
       id: _asString(json['id'] ?? json['matchId'] ?? json['match_id']),
       homeTeam: _asString(
-        json['homeTeam'] ?? json['home_team'] ?? json['homeName'],
+        homeTeamMap?['name'] ?? json['homeTeamName'] ?? json['home_team'] ?? json['homeName'],
         fallback: 'Time A',
       ),
       awayTeam: _asString(
-        json['awayTeam'] ?? json['away_team'] ?? json['awayName'],
+        awayTeamMap?['name'] ?? json['awayTeamName'] ?? json['away_team'] ?? json['awayName'],
         fallback: 'Time B',
       ),
-      homeFlag: _asString(json['homeFlag'] ?? json['home_flag'], fallback: '🏳'),
-      awayFlag: _asString(json['awayFlag'] ?? json['away_flag'], fallback: '🏳'),
-      matchDate: date,
-      phase: _asString(
-        json['phase'] ?? json['round'] ?? json['stage'],
-        fallback: 'Fase de Grupos',
+      homeFlag: _asString(
+        homeTeamMap?['flagUrl'] ?? json['homeFlag'] ?? json['home_flag'],
+        fallback: '🏳',
       ),
+      awayFlag: _asString(
+        awayTeamMap?['flagUrl'] ?? json['awayFlag'] ?? json['away_flag'],
+        fallback: '🏳',
+      ),
+      matchDate: date,
+      phase: _phaseLabel(_asString(json['phase'] ?? json['round'] ?? json['stage'], fallback: 'GROUP_STAGE')),
       isLocked: apiLocked || timeLocked,
       officialHomeScore: _asInt(
-        json['homeScore'] ?? json['home_score'] ?? json['officialHomeScore'],
+        resultMap?['homeScore'] ??
+            json['homeScore'] ??
+            json['home_score'] ??
+            json['officialHomeScore'],
       ),
       officialAwayScore: _asInt(
-        json['awayScore'] ?? json['away_score'] ?? json['officialAwayScore'],
+        resultMap?['awayScore'] ??
+            json['awayScore'] ??
+            json['away_score'] ??
+            json['officialAwayScore'],
       ),
     );
+  }
+}
+
+String _phaseLabel(String raw) {
+  switch (raw.trim().toUpperCase()) {
+    case 'GROUP_STAGE':
+      return 'Fase de Grupos';
+    case 'SECOND_ROUND':
+      return '2ª Fase';
+    case 'ROUND_OF_16':
+      return 'Oitavas de Final';
+    case 'QUARTER_FINAL':
+      return 'Quartas de Final';
+    case 'SEMI_FINAL':
+      return 'Semifinal';
+    case 'THIRD_PLACE':
+      return 'Terceiro Lugar';
+    case 'FINAL':
+      return 'Final';
+    default:
+      return raw.isEmpty ? 'Fase de Grupos' : raw;
   }
 }
 
