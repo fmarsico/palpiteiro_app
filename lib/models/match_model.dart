@@ -49,6 +49,7 @@ class Match {
   final String awayFlag;
   final DateTime matchDate;
   final String phase;
+  final String? groupCode;
   final bool isLocked;
   final int? officialHomeScore;
   final int? officialAwayScore;
@@ -62,6 +63,7 @@ class Match {
     required this.awayFlag,
     required this.matchDate,
     required this.phase,
+    this.groupCode,
     required this.isLocked,
     this.officialHomeScore,
     this.officialAwayScore,
@@ -118,6 +120,7 @@ class Match {
       ),
       matchDate: date,
       phase: _phaseLabel(_asString(json['phase'] ?? json['round'] ?? json['stage'], fallback: 'GROUP_STAGE')),
+      groupCode: _asStringNullable(json['groupCode'] ?? json['group_code'] ?? json['group']),
       isLocked: apiLocked || timeLocked,
       officialHomeScore: _asInt(
         resultMap?['homeScore'] ??
@@ -163,6 +166,12 @@ String _asString(dynamic value, {String fallback = ''}) {
     return trimmed.isEmpty ? fallback : trimmed;
   }
   return value.toString();
+}
+
+String? _asStringNullable(dynamic value) {
+  if (value == null) return null;
+  final s = value.toString().trim();
+  return s.isEmpty ? null : s;
 }
 
 int? _asInt(dynamic value) {

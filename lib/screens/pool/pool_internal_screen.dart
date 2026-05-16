@@ -654,11 +654,13 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                       ),
                     ],
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) => _buildMatchCard(filtered[i]),
-                  ),
+                : _selectedPhase == 'Fase de Grupos'
+                    ? _buildGroupStageList(filtered)
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) => _buildMatchCard(filtered[i]),
+                      ),
           ),
         ),
         // Save feedback
@@ -769,6 +771,60 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ─── Group Stage list with group headers ─────────────────────────────────────
+
+  Widget _buildGroupStageList(List<Match> matches) {
+    // Collect groups and sort alphabetically
+    final grouped = <String, List<Match>>{};
+    for (final m in matches) {
+      final key = m.groupCode?.toUpperCase() ?? '';
+      grouped.putIfAbsent(key, () => []).add(m);
+    }
+    final groupOrder = grouped.keys.toList()..sort();
+
+    // Build flat list of items: header + cards
+    final items = <Widget>[];
+    for (final group in groupOrder) {
+      if (group.isNotEmpty) {
+        items.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 10, 0, 6),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0x1FBA7517),
+                    border: Border.all(color: const Color(0x40BA7517)),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    'Grupo $group',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(child: Divider(color: AppColors.border, height: 1, thickness: 1)),
+              ],
+            ),
+          ),
+        );
+      }
+      for (final m in grouped[group]!) {
+        items.add(_buildMatchCard(m));
+      }
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+      children: items,
     );
   }
 

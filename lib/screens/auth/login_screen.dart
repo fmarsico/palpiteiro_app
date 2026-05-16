@@ -154,20 +154,15 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: AppColors.goldDim,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.gold, width: 2),
-            ),
-            child: const Center(
-              child: Icon(Icons.emoji_events_outlined,
-                  color: Color(0xFFFAEEDA), size: 26),
-            ),
-          ),
-          const SizedBox(height: 8),
+           const SizedBox(
+             width: 100,
+             height: 100,
+             child: Image(
+               image: AssetImage('assets/images/palpiteiro-icone-small.png'),
+               fit: BoxFit.contain,
+             ),
+           ),
+           const SizedBox(height: 8),
           const Text('🇺🇸🇲🇽🇨🇦',
               style: TextStyle(fontSize: 15, letterSpacing: 3)),
           const SizedBox(height: 2),

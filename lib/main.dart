@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'core/app_colors.dart';
-import 'screens/auth/login_screen.dart';
+import 'screens/home_wrapper.dart';
 
 void main() {
+  // Forçar orientação apenas vertical (retrato)
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   GoogleFonts.config.allowRuntimeFetching = false;
   runApp(const PalpiteiroApp());
 }
@@ -30,7 +36,7 @@ class PalpiteiroApp extends StatelessWidget {
           fillColor: AppColors.card,
         ),
       ),
-      home: const LoginScreen(),
+      home: const HomeWrapper(),
     );
   }
 }

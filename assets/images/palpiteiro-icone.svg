@@ -1,0 +1,40 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="goldP" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF9F27"/>
+      <stop offset="45%" stop-color="#f8d080"/>
+      <stop offset="100%" stop-color="#BA7517"/>
+    </linearGradient>
+    <radialGradient id="bgGrad" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#0e2248"/>
+      <stop offset="100%" stop-color="#060f22"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Fundo com bordas arredondadas (app icon) -->
+  <rect width="1024" height="1024" rx="230" fill="url(#bgGrad)"/>
+
+  <!-- Brilho sutil no topo -->
+  <ellipse cx="512" cy="180" rx="320" ry="120" fill="white" opacity="0.04"/>
+
+  <!-- Anel externo sutil -->
+  <circle cx="512" cy="512" r="440" stroke="#EF9F27" stroke-width="8" opacity="0.2"/>
+
+  <!-- Círculo principal da bola -->
+  <circle cx="512" cy="512" r="370" stroke="#EF9F27" stroke-width="18"/>
+
+  <!-- Costura esquerda -->
+  <path d="M512 142 Q328 286 308 512 Q288 738 410 880"
+    stroke="#EF9F27" stroke-width="14" opacity="0.45" fill="none" stroke-linecap="round"/>
+
+  <!-- Costura direita -->
+  <path d="M512 142 Q696 286 716 512 Q736 738 614 880"
+    stroke="#EF9F27" stroke-width="14" opacity="0.45" fill="none" stroke-linecap="round"/>
+
+  <!-- Letra P em camadas para melhor renderização -->
+  <g fill="url(#goldP)">
+    <path d="M350 400 L350 800 L420 800 L420 650 L550 650 Q620 650 620 580 Q620 510 550 510 L420 510 L420 400 Z"/>
+  </g>
+</svg>
+
+
