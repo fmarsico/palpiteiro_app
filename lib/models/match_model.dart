@@ -53,6 +53,8 @@ class Match {
   final bool isLocked;
   final int? officialHomeScore;
   final int? officialAwayScore;
+  final int? penaltyHomeScore;
+  final int? penaltyAwayScore;
   Guess? myGuess;
 
   Match({
@@ -67,11 +69,20 @@ class Match {
     required this.isLocked,
     this.officialHomeScore,
     this.officialAwayScore,
+    this.penaltyHomeScore,
+    this.penaltyAwayScore,
     this.myGuess,
   });
 
   bool get hasOfficialResult =>
       officialHomeScore != null && officialAwayScore != null;
+
+  bool get hasPenaltyResult =>
+      penaltyHomeScore != null && penaltyAwayScore != null;
+
+  // Getters para nomes traduzidos em português
+  String get homeTeamPt => _translateTeam(homeTeam);
+  String get awayTeamPt => _translateTeam(awayTeam);
 
   factory Match.fromJson(Map<String, dynamic> json) {
     DateTime date;
@@ -134,6 +145,26 @@ class Match {
             json['away_score'] ??
             json['officialAwayScore'],
       ),
+      penaltyHomeScore: _asInt(
+        resultMap?['penaltyHomeScore'] ??
+            resultMap?['homePenaltyScore'] ??
+            resultMap?['penaltiesHome'] ??
+            resultMap?['homePenalties'] ??
+            json['penaltyHomeScore'] ??
+            json['homePenaltyScore'] ??
+            json['penaltiesHome'] ??
+            json['homePenalties'],
+      ),
+      penaltyAwayScore: _asInt(
+        resultMap?['penaltyAwayScore'] ??
+            resultMap?['awayPenaltyScore'] ??
+            resultMap?['penaltiesAway'] ??
+            resultMap?['awayPenalties'] ??
+            json['penaltyAwayScore'] ??
+            json['awayPenaltyScore'] ??
+            json['penaltiesAway'] ??
+            json['awayPenalties'],
+      ),
     );
   }
 }
@@ -181,4 +212,83 @@ int? _asInt(dynamic value) {
   return int.tryParse(value.toString());
 }
 
+String _translateTeam(String teamName) {
+  // Mapeamento simples de países em inglês para português
+  const Map<String, String> countryMap = {
+    'USA': 'Estados Unidos',
+    'United States': 'Estados Unidos',
+    'Mexico': 'México',
+    'Canada': 'Canadá',
+    'Argentina': 'Argentina',
+    'Brazil': 'Brasil',
+    'Uruguay': 'Uruguai',
+    'Paraguay': 'Paraguai',
+    'Chile': 'Chile',
+    'Colombia': 'Colômbia',
+    'Ecuador': 'Equador',
+    'Peru': 'Peru',
+    'Venezuela': 'Venezuela',
+    'Bolivia': 'Bolívia',
+    'Suriname': 'Suriname',
+    'Guyana': 'Guiana',
+    'France': 'França',
+    'Germany': 'Alemanha',
+    'England': 'Inglaterra',
+    'Spain': 'Espanha',
+    'Italy': 'Itália',
+    'Netherlands': 'Holanda',
+    'Belgium': 'Bélgica',
+    'Poland': 'Polônia',
+    'Portugal': 'Portugal',
+    'Greece': 'Grécia',
+    'Czech Republic': 'República Checa',
+    'Czechia': 'República Checa',
+    'Hungary': 'Hungria',
+    'Romania': 'Romênia',
+    'Bulgaria': 'Bulgária',
+    'Serbia': 'Sérvia',
+    'Croatia': 'Croácia',
+    'Bosnia and Herzegovina': 'Bósnia e Herzegovina',
+    'Slovenia': 'Eslovênia',
+    'Slovakia': 'Eslováquia',
+    'Ukraine': 'Ucrânia',
+    'Switzerland': 'Suíça',
+    'Austria': 'Áustria',
+    'Sweden': 'Suécia',
+    'Norway': 'Noruega',
+    'Denmark': 'Dinamarca',
+    'Finland': 'Finlândia',
+    'Iceland': 'Islândia',
+    'Ireland': 'Irlanda',
+    'Scotland': 'Escócia',
+    'Wales': 'País de Gales',
+    'Turkey': 'Turquia',
+    'Russia': 'Rússia',
+    'China': 'China',
+    'Japan': 'Japão',
+    'South Korea': 'Coreia do Sul',
+    'North Korea': 'Coreia do Norte',
+    'India': 'Índia',
+    'Pakistan': 'Paquistão',
+    'Thailand': 'Tailândia',
+    'Vietnam': 'Vietnã',
+    'Indonesia': 'Indonésia',
+    'Malaysia': 'Malásia',
+    'Singapore': 'Cingapura',
+    'Philippines': 'Filipinas',
+    'Australia': 'Austrália',
+    'New Zealand': 'Nova Zelândia',
+    'Egypt': 'Egito',
+    'Morocco': 'Marrocos',
+    'Algeria': 'Argélia',
+    'Tunisia': 'Tunísia',
+    'Nigeria': 'Nigéria',
+    'Ghana': 'Gana',
+    'Ivory Coast': 'Costa do Marfim',
+    'Senegal': 'Senegal',
+    'Cameroon': 'Camarões',
+    'South Africa': 'África do Sul',
+  };
 
+  return countryMap[teamName] ?? teamName;
+}

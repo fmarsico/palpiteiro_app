@@ -256,8 +256,12 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
       );
       setState(() => _saveSuccess = true);
     } catch (e) {
-      setState(() =>
-          _saveError = e.toString().replaceFirst('Exception: ', ''));
+      String errorMsg = e.toString().replaceFirst('Exception: ', '');
+      // Tratamento específico para deadline expirado
+      if (errorMsg.contains('deadline') || errorMsg.contains('Prediction deadline')) {
+        errorMsg = '❌ Sua fase está bloqueada!\nOs palpites desta fase foram encerrados há algum tempo.';
+      }
+      setState(() => _saveError = errorMsg);
     } finally {
       setState(() => _savingGuesses = false);
     }
@@ -359,7 +363,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
       'Oitavas de Final',
       'Quartas de Final',
       'Semifinal',
-      'Disputa do Terceiro Lugar',
+      'Terceiro Lugar',
       'Final',
     ];
     
@@ -368,10 +372,12 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
       seen.add(m.phase);
     }
     
-    // Sortear as fases conforme a ordem predefinida
+    // Ordena conforme a sequência esperada do torneio e mantém fases extras visíveis.
     final sorted = phaseOrder.where((phase) => seen.contains(phase)).toList();
-    
-    return sorted;
+    final extras = seen.where((phase) => !phaseOrder.contains(phase)).toList()
+      ..sort();
+
+    return [...sorted, ...extras];
   }
 
   List<Match> get _filteredMatches {
@@ -379,6 +385,9 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
   }
 
   bool get _hasEditableMatches => _matches.any((m) => !m.isLocked);
+
+  bool get _hasEditableMatchesInSelectedPhase =>
+      _filteredMatches.any((m) => !m.isLocked);
 
   // ─── Build ───────────────────────────────────────────────────────────────────
 
@@ -665,111 +674,84 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
         ),
         // Save feedback
         if (_saveSuccess)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0C2A1A),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.green),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle_outline,
-                    size: 16, color: AppColors.green),
-                const SizedBox(width: 8),
-                Text(
-                  'Palpites salvos com sucesso!',
-                  style: GoogleFonts.dmSans(
-                      fontSize: 12,
-                      color: AppColors.green,
-                      fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
+          _buildToastFeedback(
+            type: 'success',
+            title: 'Sucesso',
+            message: 'Operação realizada com sucesso.',
           ),
         if (_saveError != null)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A0C0C),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.red.withAlpha(128)),
-            ),
-            child: Row(
+          _buildToastFeedback(
+            type: 'error',
+            title: 'Erro',
+            message: _saveError!,
+          ),
+        if (!_hasEditableMatchesInSelectedPhase && _filteredMatches.isNotEmpty)
+          _buildToastFeedback(
+            type: 'warning',
+            title: 'Atenção',
+            message: 'O prazo de palpite para os jogos exibidos já foi encerrado.',
+          ),
+        // Save button
+        if (_hasEditableMatchesInSelectedPhase)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: Column(
               children: [
-                Icon(Icons.error_outline, size: 16, color: AppColors.red),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _saveError!,
-                    style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: AppColors.red,
-                        fontWeight: FontWeight.w600),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed:
+                        _savingGuesses || !_hasEditableMatches ? null : _saveGuesses,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.goldDim,
+                      disabledBackgroundColor: AppColors.goldDim.withAlpha(150),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      elevation: 0,
+                    ),
+                    child: _savingGuesses
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.save_outlined,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Salvar todos os palpites',
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Palpites bloqueados automaticamente no início de cada jogo',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                      fontSize: 10, color: AppColors.textDim),
                 ),
               ],
             ),
           ),
-        // Save button
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-          child: Column(
-            children: [
-              GestureDetector(
-                onTap: _savingGuesses || !_hasEditableMatches ? null : _saveGuesses,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    color: _hasEditableMatches
-                        ? AppColors.goldDim
-                        : AppColors.border,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_savingGuesses)
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      else ...[
-                        const Icon(Icons.save_outlined,
-                            size: 16, color: Colors.white),
-                        const SizedBox(width: 6),
-                        Text(
-                          _hasEditableMatches
-                              ? 'Salvar todos os palpites'
-                              : 'Sem jogos abertos para palpitar',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Palpites bloqueados automaticamente no início de cada jogo',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(
-                    fontSize: 10, color: AppColors.textDim),
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -852,24 +834,27 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                         fontSize: 10, color: AppColors.textMuted),
                   ),
                   const Spacer(),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: locked ? const Color(0xFF2A1A1A) : const Color(0xFF10281F),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: locked
-                            ? AppColors.red.withAlpha(120)
-                            : AppColors.green.withAlpha(120),
+                  Tooltip(
+                    message: _getLockReasonMessage(match),
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: locked ? const Color(0xFF2A1A1A) : const Color(0xFF10281F),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: locked
+                              ? AppColors.red.withAlpha(120)
+                              : AppColors.green.withAlpha(120),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      locked ? 'Encerrado' : 'Aberto',
-                      style: GoogleFonts.dmSans(
-                          fontSize: 9,
-                          color: locked ? AppColors.red : AppColors.green,
-                          fontWeight: FontWeight.w600),
+                      child: Text(
+                        locked ? '🔒 Encerrado' : '✅ Aberto',
+                        style: GoogleFonts.dmSans(
+                            fontSize: 9,
+                            color: locked ? AppColors.red : AppColors.green,
+                            fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                 ],
@@ -901,7 +886,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                         _buildFlagWidget(match.homeFlag),
                         const SizedBox(height: 4),
                         Text(
-                          match.homeTeam,
+                          match.homeTeamPt,
                           style: GoogleFonts.dmSans(
                               fontSize: 10,
                               color: const Color(0xFF8AB0C8),
@@ -943,7 +928,7 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                         _buildFlagWidget(match.awayFlag),
                         const SizedBox(height: 4),
                         Text(
-                          match.awayTeam,
+                          match.awayTeamPt,
                           style: GoogleFonts.dmSans(
                               fontSize: 10,
                               color: const Color(0xFF8AB0C8),
@@ -964,31 +949,58 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: AppColors.border)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Column(
                   children: [
-                    Text(
-                      'Resultado oficial: ',
-                      style: GoogleFonts.dmSans(
-                          fontSize: 9, color: AppColors.textMuted),
-                    ),
-                    Text(
-                      '${match.officialHomeScore} × ${match.officialAwayScore}',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.green,
-                      ),
-                    ),
-                    if ((match.myGuess?.points ?? 0) > 0) ...[
-                      const SizedBox(width: 4),
-                      Text(
-                        '+${match.myGuess!.points} pts ✓',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gold,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Resultado oficial: ',
+                          style: GoogleFonts.dmSans(
+                              fontSize: 9, color: AppColors.textMuted),
                         ),
+                        Text(
+                          '${match.officialHomeScore} × ${match.officialAwayScore}',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.green,
+                          ),
+                        ),
+                        if ((match.myGuess?.points ?? 0) > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '+${match.myGuess!.points} pts ✓',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.gold,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (match.hasPenaltyResult) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Pênaltis: ',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 9,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          Text(
+                            '${match.penaltyHomeScore} × ${match.penaltyAwayScore}',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.blue,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -1586,6 +1598,18 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+  String _getLockReasonMessage(Match match) {
+    if (!match.isLocked) return 'Aberto para palpites';
+
+    // Verifica se o jogo já começou
+    if (match.matchDate.isBefore(DateTime.now())) {
+      return '🔒 Este jogo já começou.\nPalpites bloqueados.';
+    }
+
+    // Se está bloqueado mas ainda não começou, é o deadline da fase
+    return '🔒 Fase bloqueada!\nDeadline para palpitar: 1h antes do primeiro jogo.\nPrimeiro jogo: ${_formatDate(match.matchDate)}';
+  }
+
   String _formatDate(DateTime date) {
     final d = date.day.toString().padLeft(2, '0');
     final m = date.month.toString().padLeft(2, '0');
@@ -1716,3 +1740,83 @@ class _ConfirmDialog extends StatelessWidget {
   }
 }
 
+Widget _buildToastFeedback({
+  required String type,
+  required String title,
+  required String message,
+}) {
+  final isSuccess = type == 'success';
+  final isError = type == 'error';
+
+  final bgColor = isSuccess
+      ? const Color(0xFF0C2A1A)
+      : isError
+          ? const Color(0xFF1A0C0C)
+          : const Color(0xFF1A1500);
+
+  final borderColor = isSuccess
+      ? AppColors.green
+      : isError
+          ? AppColors.red.withAlpha(128)
+          : const Color(0x80EF9F27);
+
+  final titleColor = isSuccess
+      ? AppColors.green
+      : isError
+          ? AppColors.red
+          : AppColors.gold;
+
+  final icon = isSuccess
+      ? Icons.check_circle_outline
+      : isError
+          ? Icons.error_outline
+          : Icons.warning_amber_rounded;
+
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: borderColor),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: titleColor.withAlpha(38),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 16, color: titleColor),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: titleColor,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                message,
+                style: GoogleFonts.dmSans(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
