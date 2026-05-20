@@ -1213,6 +1213,8 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
               _legendItem('MM Mata-mata', AppColors.blue),
             ],
           ),
+          const SizedBox(height: 10),
+          _buildScoringRulesCard(),
           const SizedBox(height: 16),
         ],
       ),
@@ -1313,6 +1315,145 @@ class _PoolInternalScreenState extends State<PoolInternalScreen> {
     return Text(
       '$pos',
       style: GoogleFonts.dmSans(fontSize: 11, color: AppColors.textMuted),
+    );
+  }
+
+  Widget _buildScoringRulesCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Pontuação ──────────────────────────────────
+          Text(
+            'Pontuação',
+            style: GoogleFonts.dmSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF8AB0C8),
+              letterSpacing: 0.04 * 11,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _scoreRuleRow(
+            badge: '4 pts',
+            badgeBg: const Color(0x26EF9F27),
+            badgeBorder: const Color(0x4DEF9F27),
+            badgeColor: AppColors.gold,
+            description: 'Acerto exato do placar',
+          ),
+          const SizedBox(height: 5),
+          _scoreRuleRow(
+            badge: '1 pt',
+            badgeBg: const Color(0x1F1D9E75),
+            badgeBorder: const Color(0x401D9E75),
+            badgeColor: AppColors.green,
+            description: 'Acerta vencedor ou empate, mas erra o placar',
+          ),
+          // ── Divider ────────────────────────────────────
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            color: AppColors.border,
+          ),
+          // ── Desempate ──────────────────────────────────
+          Text(
+            'Desempate',
+            style: GoogleFonts.dmSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF8AB0C8),
+              letterSpacing: 0.04 * 11,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _tieRow('1º', 'Maior total de pontos'),
+          const SizedBox(height: 5),
+          _tieRow('2º', 'Maior número de acertos exatos totais'),
+          const SizedBox(height: 5),
+          _tieRow('3º', 'Maior número de acertos exatos na fase de grupos'),
+          const SizedBox(height: 5),
+          _tieRow('4º', 'Maior número de acertos exatos no mata-mata'),
+        ],
+      ),
+    );
+  }
+
+  Widget _scoreRuleRow({
+    required String badge,
+    required Color badgeBg,
+    required Color badgeBorder,
+    required Color badgeColor,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 36,
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          decoration: BoxDecoration(
+            color: badgeBg,
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: badgeBorder),
+          ),
+          child: Text(
+            badge,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.dmSans(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: badgeColor,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            description,
+            style: GoogleFonts.dmSans(
+              fontSize: 11,
+              color: const Color(0xFF4A7C59),
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tieRow(String order, String description) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 16,
+          child: Text(
+            order,
+            style: GoogleFonts.dmSans(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: AppColors.gold,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            description,
+            style: GoogleFonts.dmSans(
+              fontSize: 11,
+              color: const Color(0xFF4A7C59),
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
